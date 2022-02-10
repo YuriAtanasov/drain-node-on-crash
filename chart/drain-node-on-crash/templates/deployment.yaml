@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drain-node-manager
+  namespace: {{ .Values.Namespace }}
+  labels:
+    app: drain-node-on-crash
+spec:
+  replicas: {{ .Values.managerReplicaCount }}
+  selector:
+    matchLabels:
+      app: drain-node-on-crash
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: drain-node-on-crash
+    spec:
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - drain-node-on-crash
+            topologyKey: "kubernetes.io/hostname"
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: drain
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.managerImage }}:{{ .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          env:
+            - name: NODE_TIMEOUT
+              value: "{{ .Values.nodeTimeout }}"
+            - name: AUTO_UNCORDON
+              value: "{{ .Values.autoUncordon }}"
+          resources:
+        - name: leader
+          image: "{{ .Values.leaderImage }}:{{ .Chart.AppVersion }}"
+          args:
+          - --election=drain-node-on-crash
+          - --http=0.0.0.0:4040
+          imagePullPolicy: IfNotPresent
+          ports:
+          - containerPort: 4040
